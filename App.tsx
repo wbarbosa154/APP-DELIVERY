@@ -1,57 +1,38 @@
+
 import React, { useState, useEffect } from 'react';
 import DeliveryForm from './components/DeliveryForm';
 import ResultsPage from './components/ResultsPage';
 import HistoryPage from './components/HistoryPage';
 import { type CalculationResult, type Address, type View, type Delivery } from './types';
+import { db } from './services/db';
 
 const App: React.FC = () => {
   const [view, setView] = useState<View>('form');
   const [calculationResult, setCalculationResult] = useState<CalculationResult | null>(null);
   const [addresses, setAddresses] = useState<Address[]>([
-    { id: 1, value: '' },
-    { id: 2, value: '' },
+    { id: 1, value: '', complement: '', instructions: '' },
+    { id: 2, value: '', complement: '', instructions: '' },
   ]);
-  const [applicantName, setApplicantName] = useState<string>('');
-  const [includeReturn, setIncludeReturn] = useState<boolean>(false);
-  const [deliveryHistory, setDeliveryHistory] = useState<Delivery[]>([]);
+  const [includeReturn, setIncludeReturn] = useState(false);
+  const [deliveryHistory, setDeliveryHistory] = useState<Delivery[]>(() => db.getDeliveryHistory());
 
-  // Load history from localStorage on initial render
   useEffect(() => {
-    try {
-      const storedHistory = localStorage.getItem('deliveryHistory');
-      if (storedHistory) {
-        setDeliveryHistory(JSON.parse(storedHistory));
-      }
-    } catch (error) {
-      console.error("Failed to load delivery history from localStorage", error);
-    }
-  }, []);
-
-  // Save history to localStorage whenever it changes
-  useEffect(() => {
-    try {
-      localStorage.setItem('deliveryHistory', JSON.stringify(deliveryHistory));
-    } catch (error) {
-      console.error("Failed to save delivery history to localStorage", error);
-    }
+    db.saveDeliveryHistory(deliveryHistory);
   }, [deliveryHistory]);
 
-
-  const handleCalculationSuccess = (result: CalculationResult, name: string, addresses: Address[], returnTrip: boolean) => {
+  const handleCalculationSuccess = (result: CalculationResult, addresses: Address[], includeReturn: boolean) => {
     setCalculationResult(result);
-    setApplicantName(name);
     setAddresses(addresses);
-    setIncludeReturn(returnTrip);
+    setIncludeReturn(includeReturn);
     setView('results');
   };
   
   const handleNewRequest = () => {
     setCalculationResult(null);
     setAddresses([
-      { id: 1, value: '' },
-      { id: 2, value: '' },
+      { id: 1, value: '', complement: '', instructions: '' },
+      { id: 2, value: '', complement: '', instructions: '' },
     ]);
-    setApplicantName('');
     setIncludeReturn(false);
     setView('form');
   };
@@ -67,22 +48,20 @@ const App: React.FC = () => {
       id: `entrega-${Date.now()}`,
       status: 'pending',
       result: calculationResult,
-      applicantName,
       addresses,
-      includeReturn,
       timestamp: Date.now(),
+      includeReturn,
     };
 
     setDeliveryHistory(prev => [newDelivery, ...prev]);
 
-    const addressList = addresses.map((addr, index) => `  Ponto ${index + 1}: ${addr.value}`).join('\n');
-    const returnText = includeReturn ? "\n- Retorno ao ponto 1: Sim" : "";
+    const addressList = addresses.map((addr, index) => `  Ponto ${index + 1}: ${addr.value} ${addr.complement}`).join('\n');
     const message = `
 Olá, gostaria de solicitar um serviço de entrega.
 *ID do Pedido:* ${newDelivery.id}
-*Solicitante:* ${applicantName}
 *Endereços:*
-${addressList}${returnText}
+${addressList}
+*Retorno ao Ponto 1:* ${includeReturn ? 'Sim' : 'Não'}
 *Valor Estimado:* R$ ${calculationResult.preco_estimado.toFixed(2)}
 *Distância:* ${calculationResult.distancia_km} km
 *Forma de Pagamento:* PIX
@@ -103,7 +82,7 @@ ${addressList}${returnText}
   const renderContent = () => {
     switch (view) {
       case 'form':
-        return <DeliveryForm onCalculationSuccess={handleCalculationSuccess} initialData={{ applicantName, addresses, includeReturn }} />;
+        return <DeliveryForm onCalculationSuccess={handleCalculationSuccess} initialData={{ addresses, includeReturn }} />;
       case 'results':
         if (!calculationResult) {
             setView('form'); // Fallback if result is missing
@@ -119,7 +98,7 @@ ${addressList}${returnText}
       case 'history':
         return <HistoryPage deliveries={deliveryHistory} onCancel={handleCancelDelivery} onNewRequest={handleNewRequest} onBack={handleNewRequest} />;
       default:
-        return <DeliveryForm onCalculationSuccess={handleCalculationSuccess} initialData={{ applicantName, addresses, includeReturn }} />;
+        return <DeliveryForm onCalculationSuccess={handleCalculationSuccess} initialData={{ addresses, includeReturn }} />;
     }
   };
   
@@ -127,24 +106,28 @@ ${addressList}${returnText}
 
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-4">
-      <header className="mb-6 text-center">
-        <h1 className="text-4xl font-bold text-blue-800">DELIVERYMASTER FORTALEZA</h1>
-        <p className="text-slate-600 mt-2">Solicite suas entregas com agilidade e precisão.</p>
-      </header>
-      <main className="w-full max-w-2xl">
-        {view === 'form' && (
-            <div className="mb-4 text-right">
-                <button
-                    onClick={() => setView('history')}
-                    className="bg-emerald-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-emerald-600 transition-colors text-sm shadow-md focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-400"
-                >
-                    Ver Entregas Solicitadas ({activeDeliveriesCount} ativas)
-                </button>
-            </div>
-        )}
-        {renderContent()}
-      </main>
+    <div className="min-h-screen bg-slate-50 flex flex-col items-center p-4 sm:p-6 md:p-8">
+      <div className="w-full max-w-4xl">
+        <header className="flex justify-between items-center mb-6">
+            <h1 className="text-xl sm:text-2xl font-bold text-red-600">
+                DELIVERY<span className="text-slate-800">MASTER</span>
+            </h1>
+            <button
+                onClick={() => setView('history')}
+                className="relative flex items-center gap-2 px-4 py-2 border border-red-400 text-red-600 font-semibold rounded-lg hover:bg-red-50 transition-colors"
+            >
+                Minha página
+                {activeDeliveriesCount > 0 && (
+                <span className="absolute -top-2 -right-2 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs font-bold">
+                    {activeDeliveriesCount}
+                </span>
+                )}
+            </button>
+        </header>
+        <main>
+          {renderContent()}
+        </main>
+      </div>
       <footer className="mt-8 text-center text-slate-500 text-sm">
         <p>&copy; {new Date().getFullYear()} DELIVERYMASTER FORTALEZA. Todos os direitos reservados.</p>
       </footer>

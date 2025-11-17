@@ -1,6 +1,14 @@
 export interface Address {
   id: number;
   value: string;
+  coordinates?: Coordinates | null;
+  complement: string;
+  instructions: string;
+}
+
+export interface Coordinates {
+  lat: number;
+  lng: number;
 }
 
 export interface CalculationResult {
@@ -17,10 +25,9 @@ export interface Delivery {
   id: string;
   status: DeliveryStatus;
   result: CalculationResult;
-  applicantName: string;
   addresses: Address[];
-  includeReturn: boolean;
   timestamp: number;
+  includeReturn: boolean;
 }
 
 export type View = 'form' | 'results' | 'history';
